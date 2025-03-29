@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -24,6 +23,8 @@ import CollectionFolder from '../components/CollectionFolder';
 import AddItemForm from '../components/AddItemForm';
 import { socketService } from '../utils/socketService';
 import { toast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 const Index = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -33,6 +34,7 @@ const Index = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -47,6 +49,7 @@ const Index = () => {
 
   // Connect to socket and initialize state
   useEffect(() => {
+    console.log("Initializing socket connection...");
     socketService.connect();
     
     const handleStateUpdate = (state: AppState) => {
@@ -61,6 +64,7 @@ const Index = () => {
     const handleConnect = () => {
       console.log("Socket connected");
       setSocketConnected(true);
+      setIsReconnecting(false);
       toast({
         title: "Connected to server",
         description: "Real-time sync is now active",
@@ -77,26 +81,42 @@ const Index = () => {
       });
     };
     
+    const handleConnectionError = (error: any) => {
+      console.error("Connection error:", error);
+      setSocketConnected(false);
+      toast({
+        title: "Connection error",
+        description: "Could not connect to the server. Using local mode.",
+        variant: "destructive",
+      });
+    };
+    
     socketService.on('state-update', handleStateUpdate);
     socketService.on('connect', handleConnect);
     socketService.on('disconnect', handleDisconnect);
+    socketService.on('connection_error', handleConnectionError);
     
-    // Try to load from local storage if no socket connection
+    // Try to load from local storage regardless of socket connection
     const savedState = localStorage.getItem('collectionAppState');
     if (savedState) {
-      const parsedState = JSON.parse(savedState) as AppState;
-      setItems(parsedState.items);
-      setFolders(parsedState.folders);
-      setItemOrder(parsedState.itemOrder);
-      setFolderOrder(parsedState.folderOrder);
-      setInitialized(true);
+      console.log("Loading state from local storage");
+      try {
+        const parsedState = JSON.parse(savedState) as AppState;
+        setItems(parsedState.items);
+        setFolders(parsedState.folders);
+        setItemOrder(parsedState.itemOrder);
+        setFolderOrder(parsedState.folderOrder);
+        setInitialized(true);
+      } catch (error) {
+        console.error("Error parsing saved state:", error);
+      }
     }
     
     return () => {
       socketService.off('state-update', handleStateUpdate);
       socketService.off('connect', handleConnect);
       socketService.off('disconnect', handleDisconnect);
-      socketService.disconnect();
+      socketService.off('connection_error', handleConnectionError);
     };
   }, []);
 
@@ -112,9 +132,14 @@ const Index = () => {
     };
     
     localStorage.setItem('collectionAppState', JSON.stringify(state));
-    console.log("Updating state to server:", state);
-    socketService.updateState(state);
-  }, [items, folders, itemOrder, folderOrder, initialized]);
+    
+    if (socketConnected) {
+      console.log("Updating state to server:", state);
+      socketService.updateState(state);
+    } else {
+      console.log("Socket not connected, only saving locally");
+    }
+  }, [items, folders, itemOrder, folderOrder, initialized, socketConnected]);
 
   const handleAddItem = (title: string, icon: string) => {
     const newItem: Item = {
@@ -179,9 +204,7 @@ const Index = () => {
     const overFolder = folders.find(folder => folder.id === overId);
     
     // Check if we're over the root container (not a folder or item)
-    const isOverRootContainer = overId === "root-container" || 
-                               (!items.find(item => item.id === overId) && 
-                               !folders.find(folder => folder.id === overId));
+    const isOverRootContainer = overId === "root-container";
     
     console.log("Drag over:", { activeId, overId, isOverRootContainer });
     
@@ -197,10 +220,10 @@ const Index = () => {
       );
     }
     
-    // If we're dragging an item and we're not over a folder or item, 
+    // If we're dragging an item and we're over the root container,
     // move it to the root level (no folder)
     if (activeItem && isOverRootContainer) {
-      console.log("Moving item to root level");
+      console.log("Moving item to root level from drag over");
       setItems(
         items.map(item => 
           item.id === activeId 
@@ -224,14 +247,12 @@ const Index = () => {
     
     if (activeId === overId) return;
     
-    // Check if we're dragging an item from a folder to the root level
+    // Check if we're dragging an item
     const activeItem = items.find(item => item.id === activeId);
-    if (activeItem && activeItem.folderId) {
-      const isOverRootLevel = overId === "root-container" || 
-                             (!items.some(item => item.id === overId) && 
-                             !folders.some(folder => folder.id === overId));
-      
-      if (isOverRootLevel) {
+    
+    if (activeItem) {
+      // If we're dropping on the root container, move to root level
+      if (overId === "root-container") {
         console.log("Moving item to root level in drag end");
         setItems(
           items.map(item => 
@@ -241,6 +262,33 @@ const Index = () => {
           )
         );
         return;
+      }
+      
+      // Check if dropping on another item
+      const overItem = items.find(item => item.id === overId);
+      if (overItem) {
+        // If dropping on an item at root level, reorder and keep at root
+        if (!overItem.folderId && activeItem.folderId) {
+          console.log("Moving item from folder to root level");
+          // First update the item to be at root level
+          setItems(
+            items.map(item => 
+              item.id === activeId 
+                ? { ...item, folderId: null } 
+                : item
+            )
+          );
+          
+          // Then handle reordering in the itemOrder array
+          const activeItemIndex = itemOrder.indexOf(activeId);
+          const overItemIndex = itemOrder.indexOf(overId);
+          
+          if (activeItemIndex !== -1 && overItemIndex !== -1) {
+            console.log("Reordering items in root level");
+            setItemOrder(arrayMove(itemOrder, activeItemIndex, overItemIndex));
+          }
+          return;
+        }
       }
     }
     
@@ -264,6 +312,31 @@ const Index = () => {
     }
   };
 
+  const handleForceReconnect = () => {
+    setIsReconnecting(true);
+    toast({
+      title: "Reconnecting...",
+      description: "Attempting to reconnect to the server",
+    });
+    socketService.reconnect();
+    
+    // If we have a pending state, try to send it after reconnection
+    const pendingState = localStorage.getItem('collectionAppPendingState');
+    if (pendingState) {
+      try {
+        const state = JSON.parse(pendingState) as AppState;
+        setTimeout(() => {
+          if (socketService.connected) {
+            socketService.updateState(state);
+            localStorage.removeItem('collectionAppPendingState');
+          }
+        }, 1000); // Give a little time for connection to establish
+      } catch (error) {
+        console.error("Error parsing pending state:", error);
+      }
+    }
+  };
+
   // Filter root items (not in any folder)
   const rootItems = items
     .filter(item => !item.folderId)
@@ -279,8 +352,20 @@ const Index = () => {
       <h1 className="text-2xl font-bold mb-6">Real-time Collection</h1>
       
       {!socketConnected && (
-        <div className="mb-4 p-2 bg-yellow-100 text-yellow-800 rounded-md">
-          Server connection not established. Changes won't sync across sessions.
+        <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 rounded-md flex items-center justify-between">
+          <div>
+            Server connection not established. Changes won't sync across sessions.
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleForceReconnect}
+            disabled={isReconnecting}
+            className="ml-2 bg-white hover:bg-gray-100"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${isReconnecting ? 'animate-spin' : ''}`} />
+            {isReconnecting ? 'Connecting...' : 'Reconnect'}
+          </Button>
         </div>
       )}
       

@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,12 +9,22 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
-  }
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 // Serve static files for testing
 app.use(express.static('dist'));
+app.use(express.json());
+
+// Add basic health endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'Server is running' });
+});
 
 const STATE_FILE = path.join(__dirname, 'app-state.json');
 
@@ -76,6 +85,11 @@ io.on('connection', (socket) => {
   socket.on('error', (error) => {
     console.error(`Socket error (${socket.id}):`, error);
   });
+  
+  // Heartbeat mechanism to keep connection alive
+  socket.on('ping', () => {
+    socket.emit('pong');
+  });
 });
 
 // Handle server shutdown gracefully
@@ -86,7 +100,16 @@ process.on('SIGINT', () => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Open your browser to http://localhost:${PORT} to view the app`);
+});
+
+// Log any unhandled errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

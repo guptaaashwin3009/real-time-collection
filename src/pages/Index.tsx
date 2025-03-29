@@ -146,11 +146,28 @@ const Index = () => {
     // Find if we're over a folder
     const overFolder = folders.find(folder => folder.id === overId);
     
+    // Check if we're over the root container (not a folder or item)
+    const isOverRootContainer = !items.find(item => item.id === overId) && 
+                               !folders.find(folder => folder.id === overId);
+    
+    // If we're dragging an item over a folder, move it into the folder
     if (activeItem && overFolder) {
       setItems(
         items.map(item => 
           item.id === activeId 
             ? { ...item, folderId: overFolder.id } 
+            : item
+        )
+      );
+    }
+    
+    // If we're dragging an item and we're not over a folder or item, 
+    // move it to the root level (no folder)
+    if (activeItem && isOverRootContainer) {
+      setItems(
+        items.map(item => 
+          item.id === activeId 
+            ? { ...item, folderId: null } 
             : item
         )
       );
@@ -167,6 +184,24 @@ const Index = () => {
     const overId = over.id as string;
     
     if (activeId === overId) return;
+    
+    // Check if we're dragging an item from a folder to the root level
+    const activeItem = items.find(item => item.id === activeId);
+    if (activeItem && activeItem.folderId) {
+      const isOverRootLevel = !items.some(item => item.id === overId) && 
+                             !folders.some(folder => folder.id === overId);
+      
+      if (isOverRootLevel) {
+        setItems(
+          items.map(item => 
+            item.id === activeId 
+              ? { ...item, folderId: null } 
+              : item
+          )
+        );
+        return;
+      }
+    }
     
     // Check if we're sorting items
     const activeItemIndex = itemOrder.indexOf(activeId);
@@ -212,7 +247,7 @@ const Index = () => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="space-y-4">
+        <div className="space-y-4" id="root-container">
           {/* Folders section */}
           <SortableContext items={folderOrder} strategy={verticalListSortingStrategy}>
             {sortedFolders.map(folder => {

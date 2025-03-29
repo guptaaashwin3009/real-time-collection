@@ -1,69 +1,46 @@
-# Welcome to your Lovable project
 
-## Project info
+# Real-time Collection App
 
-**URL**: https://lovable.dev/projects/b2806dcc-0fc9-479e-803a-d74fa635b5af
+A lightweight real-time web application for organizing items and folders with drag-and-drop functionality.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- Add items with icons and titles
+- Create folders to group items
+- Drag and drop to reorder items and folders
+- Move items between folders
+- Toggle folders between open and closed states
+- Real-time synchronization between multiple sessions
+- Persistence of state between sessions
 
-**Use Lovable**
+## Running the Application
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/b2806dcc-0fc9-479e-803a-d74fa635b5af) and start prompting.
+### Start the server
 
-Changes made via Lovable will be committed automatically to this repo.
+```bash
+node server.js
+```
 
-**Use your preferred IDE**
+### Start the client
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The application should now be running locally. Open http://localhost:8080 in your browser to use the app.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## How It Works
 
-**Use GitHub Codespaces**
+- The client uses React with TypeScript for the UI
+- Drag and drop functionality is implemented with @dnd-kit
+- Real-time synchronization uses Socket.IO
+- State is persisted both on the server and in the client's local storage
+- Multiple sessions can be opened and will stay in sync
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Technologies Used
 
-## What technologies are used for this project?
-
-This project is built with .
-
-- Vite
-- TypeScript
 - React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/b2806dcc-0fc9-479e-803a-d74fa635b5af) and click on Share -> Publish.
-
-## I want to use a custom domain - is that possible?
-
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+- TypeScript
+- Socket.IO
+- DnD Kit (drag and drop)
+- Express (server)

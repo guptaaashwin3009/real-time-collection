@@ -9,7 +9,8 @@ import {
   useSensors,
   DragEndEvent,
   DragOverEvent,
-  DragStartEvent
+  DragStartEvent,
+  DragOverlay
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -25,6 +26,7 @@ import { socketService } from '../utils/socketService';
 import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { ArrowUp, ArrowDown, Book, FolderIcon } from "lucide-react";
 
 const Index = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -32,6 +34,8 @@ const Index = () => {
   const [itemOrder, setItemOrder] = useState<string[]>([]);
   const [folderOrder, setFolderOrder] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeDraggedItem, setActiveDraggedItem] = useState<Item | null>(null);
+  const [activeDraggedFolder, setActiveDraggedFolder] = useState<Folder | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -81,7 +85,7 @@ const Index = () => {
       });
     };
     
-    const handleConnectionError = (error: any) => {
+    const handleConnectionError = (error: unknown) => {
       console.error("Connection error:", error);
       setSocketConnected(false);
       toast({
@@ -124,6 +128,32 @@ const Index = () => {
   useEffect(() => {
     if (!initialized) return;
     
+    // Custom deep comparison function to check if state actually changed
+    const hasStateChanged = (prevState: string | null, newState: AppState): boolean => {
+      if (!prevState) return true;
+      
+      try {
+        const prev = JSON.parse(prevState) as AppState;
+        
+        // Check if items changed (length or content)
+        if (prev.items.length !== newState.items.length) return true;
+        if (JSON.stringify(prev.items) !== JSON.stringify(newState.items)) return true;
+        
+        // Check if folders changed (length or content)
+        if (prev.folders.length !== newState.folders.length) return true;
+        if (JSON.stringify(prev.folders) !== JSON.stringify(newState.folders)) return true;
+        
+        // Check if orders changed
+        if (JSON.stringify(prev.itemOrder) !== JSON.stringify(newState.itemOrder)) return true;
+        if (JSON.stringify(prev.folderOrder) !== JSON.stringify(newState.folderOrder)) return true;
+        
+        return false;
+      } catch (error) {
+        console.error("Error comparing states:", error);
+        return true; // On error, assume state changed
+      }
+    };
+    
     const state: AppState = {
       items,
       folders,
@@ -131,13 +161,18 @@ const Index = () => {
       folderOrder
     };
     
-    localStorage.setItem('collectionAppState', JSON.stringify(state));
+    const currentLocalState = localStorage.getItem('collectionAppState');
+    const stateChanged = hasStateChanged(currentLocalState, state);
     
-    if (socketConnected) {
-      console.log("Updating state to server:", state);
-      socketService.updateState(state);
-    } else {
-      console.log("Socket not connected, only saving locally");
+    if (stateChanged) {
+      console.log("State changed, updating local storage and server");
+      localStorage.setItem('collectionAppState', JSON.stringify(state));
+      
+      if (socketConnected) {
+        socketService.updateState(state);
+      } else {
+        console.log("Socket not connected, only saving locally");
+      }
     }
   }, [items, folders, itemOrder, folderOrder, initialized, socketConnected]);
 
@@ -186,7 +221,20 @@ const Index = () => {
 
   const handleDragStart = (event: DragStartEvent) => {
     console.log("Drag started:", event.active.id);
-    setActiveId(event.active.id as string);
+    const id = event.active.id as string;
+    setActiveId(id);
+    
+    // Check if we're dragging an item or folder
+    const draggedItem = items.find(item => item.id === id);
+    if (draggedItem) {
+      setActiveDraggedItem(draggedItem);
+      return;
+    }
+    
+    const draggedFolder = folders.find(folder => folder.id === id);
+    if (draggedFolder) {
+      setActiveDraggedFolder(draggedFolder);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -197,6 +245,9 @@ const Index = () => {
     const activeId = active.id as string;
     const overId = over.id as string;
     
+    // Skip if dragging over itself
+    if (activeId === overId) return;
+    
     // Find if the active item is an item
     const activeItem = items.find(item => item.id === activeId);
     
@@ -206,10 +257,22 @@ const Index = () => {
     // Check if we're over the root container (not a folder or item)
     const isOverRootContainer = overId === "root-container";
     
-    console.log("Drag over:", { activeId, overId, isOverRootContainer });
+    // Check if we're over an item at root level
+    const isOverRootItem = items.find(item => item.id === overId && item.folderId === null);
+    
+    console.log("Drag over:", { 
+      activeId, 
+      overId, 
+      isOverRootContainer, 
+      isOverRootItem: !!isOverRootItem, 
+      isOverFolder: !!overFolder 
+    });
     
     // If we're dragging an item over a folder, move it into the folder
     if (activeItem && overFolder) {
+      // Don't update if the item is already in this folder
+      if (activeItem.folderId === overFolder.id) return;
+      
       console.log("Moving item to folder:", overFolder.name);
       setItems(
         items.map(item => 
@@ -220,9 +283,9 @@ const Index = () => {
       );
     }
     
-    // If we're dragging an item and we're over the root container,
-    // move it to the root level (no folder)
-    if (activeItem && isOverRootContainer) {
+    // If we're dragging an item and we're over the root container or a root item,
+    // move it to the root level (no folder) - but only if it's not already at root
+    if (activeItem && activeItem.folderId && (isOverRootContainer || isOverRootItem)) {
       console.log("Moving item to root level from drag over");
       setItems(
         items.map(item => 
@@ -237,15 +300,33 @@ const Index = () => {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
+    setActiveDraggedItem(null);
+    setActiveDraggedFolder(null);
     
-    if (!over) return;
+    if (!over) {
+      // If no "over" target, this could be a drop outside any specific target
+      // so we need to check if we were dragging an item with a folderId
+      const activeItem = items.find(item => item.id === active.id);
+      if (activeItem && activeItem.folderId) {
+        console.log("Dropping item outside specific target, moving to root");
+        setItems(
+          items.map(item => 
+            item.id === active.id 
+              ? { ...item, folderId: null } 
+              : item
+          )
+        );
+      }
+      return;
+    }
     
     const activeId = active.id as string;
     const overId = over.id as string;
     
-    console.log("Drag end:", { activeId, overId });
-    
+    // Skip if dropping onto itself
     if (activeId === overId) return;
+    
+    console.log("Drag end:", { activeId, overId });
     
     // Check if we're dragging an item
     const activeItem = items.find(item => item.id === activeId);
@@ -287,6 +368,19 @@ const Index = () => {
             console.log("Reordering items in root level");
             setItemOrder(arrayMove(itemOrder, activeItemIndex, overItemIndex));
           }
+          return;
+        }
+        
+        // If dropping an item from root on an item in folder, move it to that folder
+        if (!activeItem.folderId && overItem.folderId) {
+          console.log("Moving item from root to folder");
+          setItems(
+            items.map(item => 
+              item.id === activeId 
+                ? { ...item, folderId: overItem.folderId } 
+                : item
+            )
+          );
           return;
         }
       }
@@ -369,6 +463,10 @@ const Index = () => {
         </div>
       )}
       
+      <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded-md text-sm">
+        <p>Tip: You can drag items into folders or drag them out to the main area to organize your collection.</p>
+      </div>
+      
       <AddItemForm 
         onAddItem={handleAddItem} 
         onAddFolder={handleAddFolder} 
@@ -414,6 +512,29 @@ const Index = () => {
             </div>
           </SortableContext>
         </div>
+
+        {/* Drag Overlay */}
+        <DragOverlay adjustScale={true} zIndex={1000}>
+          {activeDraggedItem && (
+            <div className="bg-white p-3 rounded-md shadow-md flex items-center gap-3 border-2 border-blue-400 opacity-80 w-full max-w-xs">
+              <div className="text-gray-600">
+                {activeDraggedItem.icon === 'arrow-up' && <ArrowUp className="w-4 h-4" />}
+                {activeDraggedItem.icon === 'arrow-down' && <ArrowDown className="w-4 h-4" />}
+                {activeDraggedItem.icon === 'book' && <Book className="w-4 h-4" />}
+              </div>
+              <span className="flex-1 text-sm">{activeDraggedItem.title}</span>
+            </div>
+          )}
+          
+          {activeDraggedFolder && (
+            <div className="bg-white p-3 rounded-md shadow-md flex items-center gap-3 border-2 border-blue-400 opacity-80 w-full max-w-xs">
+              <div className="text-gray-600">
+                <FolderIcon className="w-4 h-4" />
+              </div>
+              <span className="flex-1 text-sm">{activeDraggedFolder.name}</span>
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
     </div>
   );

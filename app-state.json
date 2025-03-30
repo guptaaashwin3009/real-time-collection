@@ -4,19 +4,19 @@
       "id": "9f261aab-75c7-43d5-8256-da54dfafd5ad",
       "title": "file 1",
       "icon": "book",
-      "folderId": "fb522f7c-7c17-42c9-a4c2-c769649cb565"
+      "folderId": null
     },
     {
       "id": "46e3b3f0-10bc-4dd2-b581-17d597379a33",
       "title": "file 2",
       "icon": "book",
-      "folderId": "762e8c77-d00e-482e-a3b3-41576a7490c3"
+      "folderId": null
     },
     {
       "id": "c6492288-656a-447d-99ba-b99501133116",
       "title": "test file 2",
       "icon": "arrow-up",
-      "folderId": "fb522f7c-7c17-42c9-a4c2-c769649cb565"
+      "folderId": null
     }
   ],
   "folders": [

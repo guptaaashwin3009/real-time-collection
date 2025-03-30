@@ -4,7 +4,7 @@
       "id": "9f261aab-75c7-43d5-8256-da54dfafd5ad",
       "title": "file 1",
       "icon": "book",
-      "folderId": null
+      "folderId": "fb522f7c-7c17-42c9-a4c2-c769649cb565"
     },
     {
       "id": "46e3b3f0-10bc-4dd2-b581-17d597379a33",
@@ -32,12 +32,12 @@
     }
   ],
   "itemOrder": [
-    "46e3b3f0-10bc-4dd2-b581-17d597379a33",
     "9f261aab-75c7-43d5-8256-da54dfafd5ad",
-    "c6492288-656a-447d-99ba-b99501133116"
+    "c6492288-656a-447d-99ba-b99501133116",
+    "46e3b3f0-10bc-4dd2-b581-17d597379a33"
   ],
   "folderOrder": [
-    "762e8c77-d00e-482e-a3b3-41576a7490c3",
-    "fb522f7c-7c17-42c9-a4c2-c769649cb565"
+    "fb522f7c-7c17-42c9-a4c2-c769649cb565",
+    "762e8c77-d00e-482e-a3b3-41576a7490c3"
   ]
 }

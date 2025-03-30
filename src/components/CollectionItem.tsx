@@ -19,12 +19,20 @@ const CollectionItem: React.FC<CollectionItemProps> = ({
   item,
   onRemoveFromFolder,
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: item.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ 
+      id: item.id,
+      data: {
+        type: 'item',
+        item: item,
+        inFolder: !!item.folderId
+      }
+    });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.5 : 1,
   };
 
   // Simple function to get icon component by name
@@ -48,6 +56,11 @@ const CollectionItem: React.FC<CollectionItemProps> = ({
       className={`bg-white p-3 rounded-md shadow-sm flex items-center gap-3 cursor-move border ${
         item.folderId ? "border-blue-200" : "border-gray-200"
       }`}
+      data-type="collection-item"
+      data-item-id={item.id}
+      data-in-folder={item.folderId ? "true" : "false"}
+      data-folder-id={item.folderId || ""}
+      data-draggable-item="true"
       {...attributes}
       {...listeners}
     >
@@ -60,6 +73,7 @@ const CollectionItem: React.FC<CollectionItemProps> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               onRemoveFromFolder();
             }}
             className="text-gray-400 hover:text-red-500 transition-colors"

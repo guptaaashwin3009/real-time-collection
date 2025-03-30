@@ -42,6 +42,8 @@ const CollectionFolder: React.FC<CollectionFolderProps> = ({
       ref={setNodeRef}
       style={style}
       className="bg-gray-50 rounded-md border border-gray-200 mb-2 overflow-hidden"
+      data-type="collection-folder"
+      data-folder-id={folder.id}
     >
       <div
         className="p-3 flex items-center gap-2 cursor-move bg-white"
@@ -76,8 +78,9 @@ const CollectionFolder: React.FC<CollectionFolderProps> = ({
           <SortableContext
             items={itemIds}
             strategy={verticalListSortingStrategy}
+            id={`folder-items-${folder.id}`}
           >
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2" data-folder-items="true" data-folder-id={folder.id}>
               {items.map((item) => (
                 <CollectionItem
                   key={item.id}

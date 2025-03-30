@@ -25,8 +25,10 @@ import AddItemForm from "../components/AddItemForm";
 import { socketService } from "../utils/socketService";
 import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, MoveUp } from "lucide-react";
 import { ArrowUp, ArrowDown, Book, FolderIcon } from "lucide-react";
+
+const ROOT_DROPPABLE_ID = "root-container";
 
 const Index = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -41,6 +43,8 @@ const Index = () => {
   const [initialized, setInitialized] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [lastDropTarget, setLastDropTarget] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -221,7 +225,8 @@ const Index = () => {
     );
   };
 
-  const handleRemoveFromFolder = (itemId: string) => {
+  const removeItemFromFolder = (itemId: string) => {
+    console.log("Removing item from folder:", itemId);
     setItems(
       items.map((item) =>
         item.id === itemId ? { ...item, folderId: null } : item
@@ -229,12 +234,22 @@ const Index = () => {
     );
   };
 
+  // Add a direct function to move item to root
+  const moveItemToRoot = (itemId: string) => {
+    console.log("Moving item to root:", itemId);
+    setItems(items.map(item => 
+      item.id === itemId ? { ...item, folderId: null } : item
+    ));
+  };
+
+  // Simplify drag handlers dramatically
   const handleDragStart = (event: DragStartEvent) => {
     console.log("Drag started:", event.active.id);
+    
     const id = event.active.id as string;
     setActiveId(id);
 
-    // Check if we're dragging an item or folder
+    // Track dragged item or folder
     const draggedItem = items.find((item) => item.id === id);
     if (draggedItem) {
       setActiveDraggedItem(draggedItem);
@@ -249,168 +264,125 @@ const Index = () => {
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-
     if (!over) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
-
+    
     // Skip if dragging over itself
     if (activeId === overId) return;
+    
+    const activeItem = items.find(item => item.id === activeId);
+    if (!activeItem) return; // Not dragging an item
 
-    // Find if the active item is an item
-    const activeItem = items.find((item) => item.id === activeId);
-
-    // Find if we're over a folder
-    const overFolder = folders.find((folder) => folder.id === overId);
-
-    // Check if we're over the root container (not a folder or item)
-    const isOverRootContainer = overId === "root-container";
-
-    // Check if we're over an item at root level
-    const isOverRootItem = items.find(
-      (item) => item.id === overId && item.folderId === null
-    );
-
-    console.log("Drag over:", {
-      activeId,
-      overId,
-      isOverRootContainer,
-      isOverRootItem: !!isOverRootItem,
-      isOverFolder: !!overFolder,
-    });
-
-    // If we're dragging an item over a folder, move it into the folder
-    if (activeItem && overFolder) {
-      // Don't update if the item is already in this folder
-      if (activeItem.folderId === overFolder.id) return;
-
-      console.log("Moving item to folder:", overFolder.name);
-      setItems(
-        items.map((item) =>
-          item.id === activeId ? { ...item, folderId: overFolder.id } : item
-        )
-      );
+    const overFolder = folders.find(folder => folder.id === overId);
+    
+    // If dragging over ROOT_DROPPABLE_ID, move to root
+    if (overId === ROOT_DROPPABLE_ID && activeItem.folderId) {
+      moveItemToRoot(activeId);
+      return;
     }
-
-    // If we're dragging an item and we're over the root container or a root item,
-    // move it to the root level (no folder) - but only if it's not already at root
-    if (
-      activeItem &&
-      activeItem.folderId &&
-      (isOverRootContainer || isOverRootItem)
-    ) {
-      console.log("Moving item to root level from drag over");
-      setItems(
-        items.map((item) =>
-          item.id === activeId ? { ...item, folderId: null } : item
-        )
-      );
+    
+    // If dragging over a folder, move into that folder
+    if (overFolder && activeItem.folderId !== overFolder.id) {
+      setItems(items.map(item => 
+        item.id === activeId ? { ...item, folderId: overFolder.id } : item
+      ));
     }
   };
 
+  useEffect(() => {
+    // Add keyboard shortcut to remove items from folders when dragging
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Escape' || e.key === 'Esc') && activeId) {
+        const draggedItem = items.find(item => item.id === activeId);
+        if (draggedItem?.folderId) {
+          console.log("Escape key pressed while dragging - removing from folder");
+          removeItemFromFolder(activeId);
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeId, items]);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    
+    // Clean up state
     setActiveId(null);
     setActiveDraggedItem(null);
     setActiveDraggedFolder(null);
-
+    
     if (!over) {
-      // If no "over" target, this could be a drop outside any specific target
-      // so we need to check if we were dragging an item with a folderId
-      const activeItem = items.find((item) => item.id === active.id);
-      if (activeItem && activeItem.folderId) {
-        console.log("Dropping item outside specific target, moving to root");
-        setItems(
-          items.map((item) =>
-            item.id === active.id ? { ...item, folderId: null } : item
-          )
-        );
+      // If dropped outside any droppable area, move to root
+      const activeItem = items.find(item => item.id === active.id);
+      if (activeItem?.folderId) {
+        moveItemToRoot(active.id as string);
       }
       return;
     }
-
+    
     const activeId = active.id as string;
     const overId = over.id as string;
-
-    // Skip if dropping onto itself
+    
+    // Skip if dropped on itself
     if (activeId === overId) return;
-
-    console.log("Drag end:", { activeId, overId });
-
-    // Check if we're dragging an item
-    const activeItem = items.find((item) => item.id === activeId);
-
-    if (activeItem) {
-      // If we're dropping on the root container, move to root level
-      if (overId === "root-container") {
-        console.log("Moving item to root level in drag end");
-        setItems(
-          items.map((item) =>
-            item.id === activeId ? { ...item, folderId: null } : item
-          )
-        );
-        return;
-      }
-
-      // Check if dropping on another item
-      const overItem = items.find((item) => item.id === overId);
-      if (overItem) {
-        // If dropping on an item at root level, reorder and keep at root
-        if (!overItem.folderId && activeItem.folderId) {
-          console.log("Moving item from folder to root level");
-          // First update the item to be at root level
-          setItems(
-            items.map((item) =>
-              item.id === activeId ? { ...item, folderId: null } : item
-            )
-          );
-
-          // Then handle reordering in the itemOrder array
-          const activeItemIndex = itemOrder.indexOf(activeId);
-          const overItemIndex = itemOrder.indexOf(overId);
-
-          if (activeItemIndex !== -1 && overItemIndex !== -1) {
-            console.log("Reordering items in root level");
-            setItemOrder(arrayMove(itemOrder, activeItemIndex, overItemIndex));
-          }
-          return;
-        }
-
-        // If dropping an item from root on an item in folder, move it to that folder
-        if (!activeItem.folderId && overItem.folderId) {
-          console.log("Moving item from root to folder");
-          setItems(
-            items.map((item) =>
-              item.id === activeId
-                ? { ...item, folderId: overItem.folderId }
-                : item
-            )
-          );
-          return;
-        }
-      }
-    }
-
-    // Check if we're sorting items
-    const activeItemIndex = itemOrder.indexOf(activeId);
-    const overItemIndex = itemOrder.indexOf(overId);
-
-    if (activeItemIndex !== -1 && overItemIndex !== -1) {
-      console.log("Reordering items");
-      setItemOrder(arrayMove(itemOrder, activeItemIndex, overItemIndex));
+    
+    // Get relevant objects
+    const activeItem = items.find(item => item.id === activeId);
+    const overItem = items.find(item => item.id === overId);
+    const overFolder = folders.find(folder => folder.id === overId);
+    
+    // Dropped on root container - move to root
+    if (overId === ROOT_DROPPABLE_ID && activeItem?.folderId) {
+      moveItemToRoot(activeId);
       return;
     }
-
-    // Check if we're sorting folders
+    
+    // Dropped on a folder - move into that folder
+    if (activeItem && overFolder) {
+      setItems(items.map(item => 
+        item.id === activeId ? { ...item, folderId: overFolder.id } : item
+      ));
+      return;
+    }
+    
+    // Dropped on a root item - move to root and reorder
+    if (activeItem && overItem && !overItem.folderId) {
+      // First move to root if needed
+      if (activeItem.folderId) {
+        moveItemToRoot(activeId);
+      }
+      
+      // Then reorder
+      const activeIndex = itemOrder.indexOf(activeId);
+      const overIndex = itemOrder.indexOf(overId);
+      
+      if (activeIndex !== -1 && overIndex !== -1) {
+        setItemOrder(arrayMove(itemOrder, activeIndex, overIndex));
+      }
+      return;
+    }
+    
+    // Handle standard reordering
+    const activeIndex = itemOrder.indexOf(activeId);
+    const overIndex = itemOrder.indexOf(overId);
+    
+    if (activeIndex !== -1 && overIndex !== -1) {
+      setItemOrder(arrayMove(itemOrder, activeIndex, overIndex));
+      return;
+    }
+    
+    // Handle folder reordering
     const activeFolderIndex = folderOrder.indexOf(activeId);
     const overFolderIndex = folderOrder.indexOf(overId);
-
+    
     if (activeFolderIndex !== -1 && overFolderIndex !== -1) {
-      console.log("Reordering folders");
-      setFolderOrder(
-        arrayMove(folderOrder, activeFolderIndex, overFolderIndex)
-      );
+      setFolderOrder(arrayMove(folderOrder, activeFolderIndex, overFolderIndex));
     }
   };
 
@@ -449,6 +421,9 @@ const Index = () => {
     .map((id) => folders.find((folder) => folder.id === id))
     .filter((folder): folder is Folder => !!folder);
 
+  // Items in folders
+  const itemsInFolders = items.filter(item => item.folderId);
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-3xl">
       <h1 className="text-2xl font-bold mb-6">Real-time Collection</h1>
@@ -474,13 +449,6 @@ const Index = () => {
         </div>
       )}
 
-      <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded-md text-sm">
-        <p>
-          Tip: You can drag items into folders or drag them out to the main area
-          to organize your collection.
-        </p>
-      </div>
-
       <AddItemForm onAddItem={handleAddItem} onAddFolder={handleAddFolder} />
 
       <DndContext
@@ -490,7 +458,15 @@ const Index = () => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="space-y-4" id="root-container">
+        <div 
+          className="space-y-4 min-h-[300px] border-2 border-dashed border-transparent transition-colors p-4 rounded-lg"
+          id={ROOT_DROPPABLE_ID}
+          data-droppable="true"
+          style={{
+            borderColor: activeId && items.find(i => i.id === activeId)?.folderId ? 'rgba(59, 130, 246, 0.5)' : 'transparent',
+            backgroundColor: activeId && items.find(i => i.id === activeId)?.folderId ? 'rgba(219, 234, 254, 0.3)' : 'transparent',
+          }}
+        >
           {/* Folders section */}
           <SortableContext
             items={folderOrder}
@@ -509,7 +485,7 @@ const Index = () => {
                   folder={folder}
                   items={folderItems}
                   onToggleFolder={() => handleToggleFolder(folder.id)}
-                  onRemoveFromFolder={handleRemoveFromFolder}
+                  onRemoveFromFolder={moveItemToRoot}
                 />
               );
             })}
@@ -519,13 +495,17 @@ const Index = () => {
           <SortableContext
             items={rootItems.map((item) => item.id)}
             strategy={verticalListSortingStrategy}
+            id="root-items"
           >
-            <div className="flex flex-col gap-2">
+            <div 
+              className="flex flex-col gap-2" 
+              data-is-root-area="true"
+            >
               {rootItems.map((item) => (
                 <CollectionItem
                   key={item.id}
                   item={item}
-                  onRemoveFromFolder={() => {}} // Not needed for root items
+                  onRemoveFromFolder={() => moveItemToRoot(item.id)}
                 />
               ))}
             </div>
